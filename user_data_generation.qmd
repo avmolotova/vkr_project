@@ -1,0 +1,153 @@
+---
+title: "user_simulation"
+format: html
+editor: visual
+---
+
+```{r}
+#| echo: false
+#| message: false
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(ids)
+library(glue)
+```
+
+## Generating fake user data
+
+```{r}
+set.seed(89) # reproducible code
+n = 100000 
+number_of_users = 10
+
+# users
+user_ids = c(random_id(n = number_of_users, bytes = 16, use_openssl = TRUE)) #giving all users face ids
+users = sample(user_ids, n, replace = TRUE) #generate users
+
+# issues
+issue_status_list = c("CV Rejected",
+                      "Submitted", 
+                      "Email Send", 
+                      "Team Review", 
+                      "Refused after HR Call", 
+                      "Interview", 
+                      "Refused after Interview", 
+                      "Test Task", 
+                      "Test Task Review",  
+                      "Refusal after Test Task",  
+                      "Test Task Discussion", 
+                      "Refused after Test Task Discussion",  
+                      "Collecting Recommendations", 
+                      "Job Offer in Progress", 
+                      "Job Offer Accepted", 
+                      "Job Offer Declined", 
+                      "Hold") 
+issue_status = sample(issue_status_list, n, replace = T, 
+                      prob = c(0.4, 
+                               0.3, 
+                               0.2, 
+                               0.5, 
+                               0.1, 
+                               0.7, 
+                               0.5,
+                               0.8, 
+                               0.8, 
+                               0.4, 
+                               0.8, 
+                               0.4, 
+                               0.3, 
+                               0.7, 
+                               0.8, 
+                               0.2, 
+                               0.1))
+
+last_updated_list = seq(from = Sys.Date() - 365, to = Sys.Date(), by = 1)
+last_updated = sample(last_updated_list, n, replace = T)
+
+generated_data = data.frame(id = users, 
+                         issue_status = issue_status,
+                         last_updated = last_updated)
+```
+
+```{r}
+# calendar generation data
+meeting_dates_list = seq(from = Sys.Date() - 365, to = Sys.Date(), by = 1)
+meeting_dates = sample(meeting_dates_list, n, replace = T)
+
+time_spend_list = seq(from = 15, to = 85, by = 5)
+time_spend = sample(time_spend_list, n, replace = T)
+
+
+user_calendar_data = data.frame(id = users, 
+                           meeting_dates = meeting_dates,
+                           time_spend = time_spend)
+```
+
+## Counting statistics
+
+```{r}
+calendid = user_calendar_data$id[1] #take the first user from the list
+calend_userdata = user_calendar_data %>% filter(id == calendid)
+
+# Attribute: this week
+
+# counting number of meeting
+week_meetings_count = calend_userdata %>%
+  filter(meeting_dates > Sys.Date()-7) %>%
+  nrow()
+
+week_meetings_current = calend_userdata %>%
+  filter(meeting_dates > Sys.Date()-7) %>% 
+  mutate(day = floor_date(meeting_dates, "day")) %>%
+  group_by(day) %>%
+  summarize(avg = round(mean(time_spend))) %>% 
+  slice_max(day) 
+week_meetings_current = week_meetings_current$avg
+
+
+
+# Attribute: month
+
+userid = generated_data$id[1] #take the first user from the list
+userdata = generated_data %>% filter(id == userid)
+
+interview_count = userdata %>% 
+  filter(last_updated > Sys.Date()- months(1)) %>% 
+  filter(issue_status == "Interview") %>% 
+  count() 
+
+```
+
+## Users' Output examples:
+
+| \#  | Text                                                                                                                                                | Attribute: timing |
+|-----|-----------------------------------------------------|--------------|
+| 1   | During last week you had **`r week_meetings_count`** meeting overall, and your average time in meetings was **`r week_meetings_current`** per day.  | This week         |
+| 2   | You had **`r interview_count`** interview(s) with candidates in the last month.                                                                     | Month             |
+
+Custom fields for filters:
+
+```{r}
+# uncomment to use for backend
+
+# date_start - first field "from"
+# date_end - second field "to"
+# status - "Status" from issue
+
+# custom_count_example = userdata %>% 
+#   filter(between(last_updated, as.Date(date_start), as.Date(date_end))) %>% 
+#   filter(issue_status == status) %>% 
+#   count()
+```
+
+```{r}
+# example for status field (CV Rejected) and date (April '23)
+
+custom_count = userdata %>% 
+  filter(between(last_updated, as.Date('2023-04-01'), as.Date('2023-04-30'))) %>% 
+  filter(issue_status == "CV Rejected") %>% 
+  count()
+
+glue('You had {custom_count} issue(s) with CV Rejected status in this month.')
+```
